@@ -1,5 +1,5 @@
 CC = gcc
-FLAGS = -Wall -Wextra -pedantic -std=c11
+FLAGS = -Wall -Wextra -pedantic -std=c11 -Iinclude
 DEBUG_FLAG = -g 
 LING_FLAG = -lestd -lpthread
 OPTIMIZE_FLAG = -O3

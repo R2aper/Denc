@@ -1,15 +1,11 @@
 #include <estd/argparser.h>
-#include <estd/eerror.h>
 #include <estd/efile.h>
-#include <estd/estring.h>
-#include <estd/grow.h>
 #include <pthread.h>
-#include <stddef.h>
-#include <stdint.h>
 #include <stdlib.h>
 
+#include "thread_process.h"
+
 #define BUFFER_SIZE (1 << 20) // 1Mb
-#define NUM_THREAD 4
 
 #define EXIT_NO_PASSWORD_FILE_PROVIDED 1
 #define EXIT_NO_INPUT_FILE_PROVIDED 2
@@ -34,28 +30,6 @@ void usage(void) {
        "encryption/decryption\n"
        "-o, --output\t Set output file\n"
        "-h, --help\t Display this help and exit");
-}
-
-typedef struct thread_data {
-  unsigned char *buffer;
-  size_t start;
-  size_t end;
-  uint64_t start_pos;
-  const string *key;
-
-} thread_data_t;
-
-void *process_chunk(void *arg) {
-  thread_data_t *data = (thread_data_t *)arg;
-  size_t key_index = 0;
-
-  for (size_t i = data->start; i < data->end; i++) {
-    unsigned long global_pos = data->start_pos + (i - data->start);
-    key_index = (global_pos + i) % string_length(data->key);
-    data->buffer[i] ^= string_at(data->key, key_index, NULL);
-  }
-
-  return NULL;
 }
 
 int encrypt_decrypt(const string *key, freader *source, fwriter *output) {
