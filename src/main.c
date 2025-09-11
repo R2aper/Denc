@@ -5,6 +5,8 @@
 #include <estd/grow.h>
 #include <stdlib.h>
 
+#define BUFFER_SIZE (1 << 20) // 1Mb
+
 #define EXIT_NO_KEY_FILE_PROVIDED 1
 #define EXIT_NO_INPUT_FILE_PROVIDED 2
 #define EXIT_MORE_THAN_ONE_INPUT_FILE 3
@@ -29,17 +31,22 @@ void usage(void) {
 }
 
 int encrypt_decrypt(const string *key, freader *source, fwriter *output) {
+  if (!key || is_empty(key) || !source || !output)
+    return EXIT_ALGORITHM_FAILED;
+
   size_t key_index = 0;
 
-  int bytes = 0;
-  easy_error error = OK;
-  while ((bytes = file_getc(source)) != EOF) {
-    char encrypt_byte = bytes ^ string_at(key, key_index, &error);
-    if (error != OK)
-      return EXIT_ALGORITHM_FAILED;
+  unsigned char buffer[BUFFER_SIZE];
+  size_t bytes_read;
 
-    file_putc(encrypt_byte, output);
-    key_index = (key_index + 1) % string_length(key);
+  easy_error err = OK;
+  while ((bytes_read = read_bytes(source, buffer, 1, BUFFER_SIZE, &err)) > 0) {
+    for (size_t i = 0; i < bytes_read; i++) {
+      buffer[i] ^= string_at(key, key_index, &err);
+      if (key_index > string_length(key))
+        key_index = (i + 513) % string_length(key);
+    }
+    write_bytes(output, buffer, 1, bytes_read, &err);
   }
 
   return EXIT_SUCCESS;
