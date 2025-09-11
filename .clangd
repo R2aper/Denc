@@ -1,0 +1,5 @@
+CompileFlags:
+  Add: -Werror
+  Add: -Wall
+  Add: -Wextra
+  Add: -Wpedantic
