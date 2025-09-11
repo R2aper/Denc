@@ -11,7 +11,7 @@
 #define BUFFER_SIZE (1 << 20) // 1Mb
 #define NUM_THREAD 4
 
-#define EXIT_NO_KEY_FILE_PROVIDED 1
+#define EXIT_NO_PASSWORD_FILE_PROVIDED 1
 #define EXIT_NO_INPUT_FILE_PROVIDED 2
 #define EXIT_MORE_THAN_ONE_INPUT_FILE 3
 #define EXIT_ALGORITHM_FAILED 4
@@ -120,7 +120,7 @@ static inline easy_error add_arguments(cmd_parser *parser) {
   if (err != OK)
     return err;
 
-  err = cmd_parser_add(parser, "-k", "--key", SINGLE_OPTION);
+  err = cmd_parser_add(parser, "-p", "--password", SINGLE_OPTION);
   if (err != OK)
     return err;
 
@@ -133,14 +133,14 @@ static inline easy_error add_arguments(cmd_parser *parser) {
 
 int main(int argc, char *argv[]) {
   easy_error error = OK;
-  string *key = NULL;
-  freader *input_file = NULL, *key_file = NULL;
+  string *password = NULL;
+  freader *input_file = NULL, *password_file = NULL;
   fwriter *output_file = NULL;
 
-  const string *path_to_key_file = NULL, *path_to_output_file_given = NULL,
+  const string *path_to_password_file = NULL, *path_to_output_file_given = NULL,
                *path_to_input_file = NULL;
 
-  bool key_flag = false, output_flag = false, help_flag = false;
+  bool password_flag = false, output_flag = false, help_flag = false;
 
   string *path_to_output_file =
       NULL; // This would be not NULL if user didn't pass output file
@@ -200,17 +200,17 @@ int main(int argc, char *argv[]) {
   path_to_input_file = grow_get(positional_args, 0, &error);
   CHECK_ERROR(error, cmd_parser_free(parser));
 
-  // Getting key
-  key_flag = cmd_is_set(parser, "-k", &error);
+  // Getting password
+  password_flag = cmd_is_set(parser, "-p", &error);
   CHECK_ERROR(error, cmd_parser_free(parser))
-  if (key_flag) {
-    path_to_key_file = cmd_get_value(parser, "-k", &error);
+  if (password_flag) {
+    path_to_password_file = cmd_get_value(parser, "-p", &error);
     CHECK_ERROR(error, cmd_parser_free(parser))
 
   } else {
-    fprintf(stderr, "Fatal! No key file provided!\n");
+    fprintf(stderr, "Fatal! No password file provided!\n");
     cmd_parser_free(parser);
-    return EXIT_NO_KEY_FILE_PROVIDED;
+    return EXIT_NO_PASSWORD_FILE_PROVIDED;
   }
 
   // Getting output file
@@ -244,25 +244,25 @@ int main(int argc, char *argv[]) {
       error, cmd_parser_free(parser); closer(input_file);
       if (path_to_output_file) { string_free_(path_to_output_file); })
 
-  key_file = openr(string_cstr(path_to_key_file), READ, &error);
+  password_file = openr(string_cstr(path_to_password_file), READ, &error);
   CHECK_ERROR(
       error, cmd_parser_free(parser); closer(input_file); closew(output_file);
-      closer(key_file);
+      closer(password_file);
       if (path_to_output_file) { string_free_(path_to_output_file); })
 
-  key = read_file(key_file, &error);
+  password = read_file(password_file, &error);
   CHECK_ERROR(
       error, cmd_parser_free(parser); closer(input_file); closew(output_file);
-      closer(key_file);
+      closer(password_file);
       if (path_to_output_file) { string_free_(path_to_output_file); })
 
-  int result = encrypt_decrypt(key, input_file, output_file);
+  int result = encrypt_decrypt(password, input_file, output_file);
 
   cmd_parser_free(parser);
   closew(output_file);
   closer(input_file);
-  closer(key_file);
-  string_free_(key);
+  closer(password_file);
+  string_free_(password);
   if (path_to_output_file)
     string_free_(path_to_output_file);
 
