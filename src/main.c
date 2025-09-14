@@ -1,15 +1,15 @@
 #include <estd/argparser.h>
 #include <estd/efile.h>
+#include <stdlib.h>
 
 #include "encrypt.h"
 #include "global.h"
 #include "thread_process.h"
 
-#define CHECK_ERROR(error, what_to_free)                                       \
+#define CHECK_ERROR(error)                                                     \
   if (error != OK) {                                                           \
     fprintf(stderr, "%s\n", easy_error_message(error));                        \
-    what_to_free;                                                              \
-    return error;                                                              \
+    goto cleanup;                                                              \
   }
 
 void usage(void) {
@@ -53,6 +53,35 @@ static inline easy_error add_arguments(cmd_parser *parser) {
   return OK;
 }
 
+static inline easy_error check_arguments(cmd_parser *parser,
+                                         bool *password_flag, bool *output_flag,
+                                         bool *help_flag, bool *encrypt_flag,
+                                         bool *decrypt_flag) {
+  easy_error err = OK;
+
+  *help_flag = cmd_is_set(parser, "-h", &err);
+  if (err != OK)
+    return err;
+
+  *encrypt_flag = cmd_is_set(parser, "-e", &err);
+  if (err != OK)
+    return err;
+
+  *decrypt_flag = cmd_is_set(parser, "-d", &err);
+  if (err != OK)
+    return err;
+
+  *password_flag = cmd_is_set(parser, "-p", &err);
+  if (err != OK)
+    return err;
+
+  *output_flag = cmd_is_set(parser, "-o", &err);
+  if (err != OK)
+    return err;
+
+  return OK;
+}
+
 int main(int argc, char *argv[]) {
   easy_error error = OK;
   string *password = NULL;
@@ -79,7 +108,7 @@ int main(int argc, char *argv[]) {
 
   // Adding arguments
   error = add_arguments(parser);
-  CHECK_ERROR(error, cmd_parser_free(parser))
+  CHECK_ERROR(error);
 
   // Parse command line
   error = cmd_parser_parse(parser, argc, argv);
@@ -88,23 +117,18 @@ int main(int argc, char *argv[]) {
     if (parser->arg_error)
       fprintf(stderr, ": %s\n", string_cstr(parser->arg_error));
 
-    cmd_parser_free(parser);
-    return error;
+    goto cleanup;
   }
 
-  help_flag = cmd_is_set(parser, "-h", &error);
-  CHECK_ERROR(error, cmd_parser_free(parser))
+  error = check_arguments(parser, &password_flag, &output_flag, &help_flag,
+                          &encrypt_flag, &decrypt_flag);
+  CHECK_ERROR(error);
+
   if (help_flag) {
     usage();
     cmd_parser_free(parser);
-    return 0;
+    return EXIT_SUCCESS;
   }
-
-  encrypt_flag = cmd_is_set(parser, "-e", &error);
-  CHECK_ERROR(error, cmd_parser_free(parser))
-
-  decrypt_flag = cmd_is_set(parser, "-d", &error);
-  CHECK_ERROR(error, cmd_parser_free(parser))
 
   if (encrypt_flag && decrypt_flag) {
     fprintf(stderr, "Fatal! provide both encrypt and decrypt flag mode!\n");
@@ -121,13 +145,14 @@ int main(int argc, char *argv[]) {
 
   // Getting input file
   const grow *positional_args = cmd_get_pos_args(parser, &error);
-  CHECK_ERROR(error, cmd_parser_free(parser));
+  CHECK_ERROR(error);
 
   // No input file provided
   if (grow_size(positional_args) == 0) {
     fprintf(stderr, "Fatal! No file to encrypt/decrypt provided!\n");
-    cmd_parser_free(parser);
-    return EXIT_NO_INPUT_FILE_PROVIDED;
+
+    error = EXIT_NO_INPUT_FILE_PROVIDED;
+    goto cleanup;
 
     // Provided more that 1 input file
   } else if (grow_size(positional_args) > 1) {
@@ -137,78 +162,68 @@ int main(int argc, char *argv[]) {
       fprintf(stderr, " %s, ", string_cstr(arg));
     }
 
-    cmd_parser_free(parser);
-    return EXIT_MORE_THAN_ONE_INPUT_FILE;
+    error = EXIT_MORE_THAN_ONE_INPUT_FILE;
+    goto cleanup;
   }
 
   path_to_input_file = grow_get(positional_args, 0, &error);
-  CHECK_ERROR(error, cmd_parser_free(parser));
+  CHECK_ERROR(error);
 
   // Getting password
-  password_flag = cmd_is_set(parser, "-p", &error);
-  CHECK_ERROR(error, cmd_parser_free(parser))
   if (password_flag) {
     path_to_password_file = cmd_get_value(parser, "-p", &error);
-    CHECK_ERROR(error, cmd_parser_free(parser))
+    CHECK_ERROR(error);
 
   } else {
     fprintf(stderr, "Fatal! No password file provided!\n");
     cmd_parser_free(parser);
-    return EXIT_NO_PASSWORD_FILE_PROVIDED;
+    error = EXIT_NO_PASSWORD_FILE_PROVIDED;
+    goto cleanup;
   }
 
   // Getting output file
-  output_flag = cmd_is_set(parser, "-o", &error);
-  CHECK_ERROR(error, cmd_parser_free(parser))
-
   if (output_flag) {
     path_to_output_file_given = cmd_get_value(parser, "-o", &error);
-    CHECK_ERROR(error, cmd_parser_free(parser))
+    CHECK_ERROR(error);
 
   } else {
     path_to_output_file = string_from_cstr(string_cstr(path_to_input_file));
     error = string_append(path_to_output_file, ".x"); // add .x extension
 
-    CHECK_ERROR(error, cmd_parser_free(parser);
-                string_free_(path_to_output_file));
+    CHECK_ERROR(error);
   }
 
   // Opening files
-  // FIX: Rewrite this shit
   input_file = openr(string_cstr(path_to_input_file), READ_BIN, &error);
-  CHECK_ERROR(
-      error, cmd_parser_free(parser);
-      if (path_to_output_file) { string_free_(path_to_output_file); })
+  CHECK_ERROR(error);
 
   output_file =
       openw(string_cstr((path_to_output_file) ? path_to_output_file
                                               : path_to_output_file_given),
             WRITE_BIN, &error);
-  CHECK_ERROR(
-      error, cmd_parser_free(parser); closer(input_file);
-      if (path_to_output_file) { string_free_(path_to_output_file); })
+  CHECK_ERROR(error);
 
   password_file = openr(string_cstr(path_to_password_file), READ_BIN, &error);
-  CHECK_ERROR(
-      error, cmd_parser_free(parser); closer(input_file); closew(output_file);
-      closer(password_file);
-      if (path_to_output_file) { string_free_(path_to_output_file); })
+  CHECK_ERROR(error);
 
   password = read_file(password_file, &error);
-  CHECK_ERROR(
-      error, cmd_parser_free(parser); closer(input_file); closew(output_file);
-      closer(password_file);
-      if (path_to_output_file) { string_free_(path_to_output_file); })
+  CHECK_ERROR(error);
 
-  int result = encrypt_decrypt(password, input_file, output_file, mode);
+  error = encrypt_decrypt(password, input_file, output_file, mode);
 
-  cmd_parser_free(parser);
-  closew(output_file);
-  closer(input_file);
-  closer(password_file);
-  string_free_(password);
+cleanup: // Goto place to cleanup all allocated stuff
+  if (parser)
+    cmd_parser_free(parser);
+  if (output_file)
+    closew(output_file);
+  if (input_file)
+    closer(input_file);
+  if (password_file)
+    closer(password_file);
+  if (password)
+    string_free_(password);
   if (path_to_output_file)
     string_free_(path_to_output_file);
 
-  return result;
+  return error;
 }
