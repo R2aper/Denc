@@ -2,6 +2,7 @@
 
 #include <estd/efile.h>
 #include <estd/estring.h>
+#include <stdint.h>
 #include <stdlib.h>
 
 #ifdef _WIN32
@@ -38,8 +39,7 @@ int get_random_bytes(void *buf, ssize_t len) {
 
   ssize_t bytes_read = 0;
   while (bytes_read < len) {
-    ssize_t result =
-        read(fd, (unsigned char *)buf + bytes_read, len - bytes_read);
+    ssize_t result = read(fd, (uint8_t *)buf + bytes_read, len - bytes_read);
     if (result < 0) {
       close(fd);
       return -1;
@@ -52,8 +52,8 @@ int get_random_bytes(void *buf, ssize_t len) {
 #endif
 }
 
-static easy_error read_salt_and_iv(freader *source, unsigned char *salt,
-                                   unsigned char *iv) {
+static easy_error read_salt_and_iv(freader *source, uint8_t *salt,
+                                   uint8_t *iv) {
   if (!source || !salt || !iv)
     return INVALID_ARGUMENT;
 
@@ -71,8 +71,8 @@ static easy_error read_salt_and_iv(freader *source, unsigned char *salt,
   return OK;
 }
 
-static easy_error write_salt_and_iv(fwriter *output, const unsigned char *salt,
-                                    const unsigned char *iv) {
+static easy_error write_salt_and_iv(fwriter *output, const uint8_t *salt,
+                                    const uint8_t *iv) {
   if (!output || !salt || !iv)
     return INVALID_ARGUMENT;
 
@@ -104,7 +104,7 @@ uint32_t ced_hash_fnv1a(const void *key, size_t length) {
   return hash;
 }
 
-static inline int init_salt_and_iv(unsigned char *salt, unsigned char *iv) {
+static inline int init_salt_and_iv(uint8_t *salt, uint8_t *iv) {
   if (get_random_bytes(salt, SALT_SIZE) != 0) {
     return -1;
   }
@@ -116,7 +116,7 @@ static inline int init_salt_and_iv(unsigned char *salt, unsigned char *iv) {
 }
 
 static inline string *derive_key_with_salt(const string *password,
-                                           const unsigned char *salt,
+                                           const uint8_t *salt,
                                            size_t key_size) {
   string *key = NULL,
          *salted_password = string_from_cstr(string_cstr(password));
@@ -161,7 +161,7 @@ int encrypt(const string *password, freader *source, fwriter *output) {
   easy_error err = OK;
   string *key = NULL;
 
-  unsigned char salt[SALT_SIZE], iv[IV_SIZE];
+  uint8_t salt[SALT_SIZE], iv[IV_SIZE];
   if (init_salt_and_iv(salt, iv) != 0) {
     puts("ADADD");
     return EXIT_ALGORITHM_FAILED;
@@ -178,7 +178,7 @@ int encrypt(const string *password, freader *source, fwriter *output) {
   uint32_t pos = 0;
 
   size_t bytes_read;
-  unsigned char buffer[BUFFER_SIZE];
+  uint8_t buffer[BUFFER_SIZE];
 
   while ((bytes_read = read_bytes(source, buffer, 1, BUFFER_SIZE, &err)) > 0 &&
          err == OK) {
@@ -187,34 +187,34 @@ int encrypt(const string *password, freader *source, fwriter *output) {
       for (size_t i = 0; i < bytes_read; i++) {
         size_t key_index = (pos + i) % string_length(key);
         char key_char = string_at(key, key_index, &err);
-        if (err != OK) {
+        if (err != OK)
           break;
-        }
+
         buffer[i] ^= key_char ^ iv[(pos + i) % IV_SIZE];
       }
 
     } else {
-      int result = multithreading_processing(key, buffer, NUM_THREAD,
-                                             bytes_read, iv, pos);
+      int result =
+          multithreading_processing(key, buffer, 0, bytes_read, iv, pos);
+
       if (result != 0) {
         string_free_(key);
         return result;
       }
     }
 
-    if (err != OK) { // Error from single-threaded loop
+    if (err != OK) // Error from single-threaded loop
       break;
-    }
 
     write_bytes(output, buffer, 1, bytes_read, &err);
-    if (err != OK) {
+    if (err != OK)
       break;
-    }
 
     pos += bytes_read;
   }
 
-  string_free_(key);
+  if (key)
+    string_free_(key);
 
   return (err == OK) ? EXIT_SUCCESS : err;
 }
@@ -229,7 +229,7 @@ int decrypt(const string *password, freader *source, fwriter *output) {
   easy_error err = OK;
   string *key = NULL;
 
-  unsigned char salt[SALT_SIZE], iv[IV_SIZE];
+  uint8_t salt[SALT_SIZE], iv[IV_SIZE];
   err = read_salt_and_iv(source, salt, iv);
   if (err != OK)
     return EXIT_ERROR_READING_SALT_IV;
@@ -241,7 +241,7 @@ int decrypt(const string *password, freader *source, fwriter *output) {
   uint32_t pos = 0;
 
   size_t bytes_read;
-  unsigned char buffer[BUFFER_SIZE];
+  uint8_t buffer[BUFFER_SIZE];
 
   while ((bytes_read = read_bytes(source, buffer, 1, BUFFER_SIZE, &err)) > 0 &&
          err == OK) {
@@ -250,34 +250,35 @@ int decrypt(const string *password, freader *source, fwriter *output) {
       for (size_t i = 0; i < bytes_read; i++) {
         size_t key_index = (pos + i) % string_length(key);
         char key_char = string_at(key, key_index, &err);
-        if (err != OK) {
+        if (err != OK)
           break;
-        }
+
         buffer[i] ^= key_char ^ iv[(pos + i) % IV_SIZE];
       }
 
     } else {
 
-      int result = multithreading_processing(key, buffer, NUM_THREAD,
-                                             bytes_read, iv, pos);
+      int result =
+          multithreading_processing(key, buffer, 0, bytes_read, iv, pos);
+
       if (result != 0) {
         string_free_(key);
         return result;
       }
     }
 
-    if (err != OK) { // Error from single-threaded loop
+    if (err != OK) // Error from single-threaded loop
       break;
-    }
 
     write_bytes(output, buffer, 1, bytes_read, &err);
-    if (err != OK) {
+    if (err != OK)
       break;
-    }
+
     pos += bytes_read;
   }
 
-  string_free_(key);
+  if (key)
+    string_free_(key);
 
   return (err == OK) ? EXIT_SUCCESS : err;
 }
