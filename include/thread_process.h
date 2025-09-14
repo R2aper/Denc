@@ -12,7 +12,7 @@ typedef struct thread_data_t {
   size_t end;
   uint64_t start_pos;
   const string *key;
-  // uint32_t iv_value;
+  const unsigned char *iv;
 
 } thread_data_t;
 
@@ -35,6 +35,7 @@ int process_chunk(void *arg);
  * @return EXIT_SUCCESS or error code
  */
 int multithreading_processing(const string *key, unsigned char *buffer,
-                              int num_thread, size_t bytes_read, uint32_t pos);
+                              int num_thread, size_t bytes_read,
+                              const unsigned char *iv, uint32_t pos);
 
 #endif // THREAD_PROCES_H

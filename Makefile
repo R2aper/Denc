@@ -1,7 +1,7 @@
 CC = gcc
 FLAGS = -Wall -Wextra -pedantic -std=c11 -Iinclude
 DEBUG_FLAG = -g 
-LING_FLAG = -lestd -lpthread
+LING_FLAG = -lestd
 OPTIMIZE_FLAG = -O3
 
 NAME = denc

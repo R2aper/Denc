@@ -1,6 +1,5 @@
 #include <estd/argparser.h>
 #include <estd/efile.h>
-#include <stdlib.h>
 
 #include "encrypt.h"
 #include "global.h"
@@ -14,15 +13,18 @@
   }
 
 void usage(void) {
-  puts("Usage: denc [OPTIONS]... [FILE]\n"
-       "Encrypt/Decrypt given file with key using xor\n"
-       "\n"
-       "Options:\n"
-       "-p, --password <path to password file>\t Provide file that contain "
-       "password that would be used for "
-       "encryption/decryption\n"
-       "-o, --output\t\t\t\t Set output file\n"
-       "-h, --help\t\t\t\t Display this help and exit");
+  puts(
+      "Usage: denc [OPTIONS]... [FILE]\n"
+      "Encrypt/Decrypt given file with key using xor\n"
+      "\n"
+      "Options:\n"
+      "-p, --password <path to password file>\t Provide key that would be used "
+      "for "
+      "encryption/decryption\n"
+      "-e, --encypt\t\t\t\t Encrypt file\n"
+      "-d, --decrypt\t\t\t\t Decrypt file\n"
+      "-o, --output\t\t\t\t Set output file\n"
+      "-h, --help\t\t\t\t Display this help and exit");
 }
 
 static inline easy_error add_arguments(cmd_parser *parser) {
@@ -40,6 +42,14 @@ static inline easy_error add_arguments(cmd_parser *parser) {
   if (err != OK)
     return err;
 
+  cmd_parser_add(parser, "-e", "--encrypt", FLAG);
+  if (err != OK)
+    return err;
+
+  cmd_parser_add(parser, "-d", "--decrypt", FLAG);
+  if (err != OK)
+    return err;
+
   return OK;
 }
 
@@ -52,10 +62,13 @@ int main(int argc, char *argv[]) {
   const string *path_to_password_file = NULL, *path_to_output_file_given = NULL,
                *path_to_input_file = NULL;
 
-  bool password_flag = false, output_flag = false, help_flag = false;
+  bool password_flag = false, output_flag = false, help_flag = false,
+       encrypt_flag = false, decrypt_flag = false;
 
   string *path_to_output_file =
       NULL; // This would be not NULL if user didn't pass output file
+
+  PROGRAM_MODE mode = 0;
 
   // Creating parser
   cmd_parser *parser = cmd_parser_create();
@@ -86,6 +99,25 @@ int main(int argc, char *argv[]) {
     cmd_parser_free(parser);
     return 0;
   }
+
+  encrypt_flag = cmd_is_set(parser, "-e", &error);
+  CHECK_ERROR(error, cmd_parser_free(parser))
+
+  decrypt_flag = cmd_is_set(parser, "-d", &error);
+  CHECK_ERROR(error, cmd_parser_free(parser))
+
+  if (encrypt_flag && decrypt_flag) {
+    fprintf(stderr, "Fatal! provide both encrypt and decrypt flag mode!\n");
+    cmd_parser_free(parser);
+    return EXIT_INVALID_MODE;
+
+  } else if (!encrypt_flag && !decrypt_flag) {
+    fprintf(stderr, "Fatal! No flag mode provide!\n");
+    cmd_parser_free(parser);
+    return EXIT_INVALID_MODE;
+  }
+
+  mode = (encrypt_flag) ? ENCRYPT : DECRYPT;
 
   // Getting input file
   const grow *positional_args = cmd_get_pos_args(parser, &error);
@@ -156,7 +188,7 @@ int main(int argc, char *argv[]) {
       error, cmd_parser_free(parser); closer(input_file);
       if (path_to_output_file) { string_free_(path_to_output_file); })
 
-  password_file = openr(string_cstr(path_to_password_file), READ, &error);
+  password_file = openr(string_cstr(path_to_password_file), READ_BIN, &error);
   CHECK_ERROR(
       error, cmd_parser_free(parser); closer(input_file); closew(output_file);
       closer(password_file);
@@ -168,7 +200,7 @@ int main(int argc, char *argv[]) {
       closer(password_file);
       if (path_to_output_file) { string_free_(path_to_output_file); })
 
-  int result = encrypt_decrypt(password, input_file, output_file);
+  int result = encrypt_decrypt(password, input_file, output_file, mode);
 
   cmd_parser_free(parser);
   closew(output_file);
