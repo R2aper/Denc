@@ -1,0 +1,27 @@
+#ifndef GLOBAL_H
+#define GLOBAL_H
+
+// Encrypt macros
+#define BUFFER_SIZE (1 << 20) // 1Mb
+#define KEY_SIZE 32
+#define SALT_SIZE 8
+#define IV_SIZE 16
+
+// Thread macros
+#define NUM_THREAD 4
+
+// Exit errors code
+#define EXIT_NO_PASSWORD_FILE_PROVIDED 1
+#define EXIT_NO_INPUT_FILE_PROVIDED 2
+#define EXIT_MORE_THAN_ONE_INPUT_FILE 3
+#define EXIT_ALGORITHM_FAILED 4
+#define EXIT_THREAD_CREATE_ERROR 5
+#define EXIT_THREAD_JOIN_ERROR 6
+#define EXIT_INVALID_MODE 7
+#define EXIT_PASSWORD_ERROR 8
+#define EXIT_FILE_ERROR 9
+#define EXIT_COULDNT_CREATE_KEY 10
+#define EXIT_ERROR_WRITING_SALT_IV 11
+#define EXIT_ERROR_READING_SALT_IV 12
+
+#endif // GLOBAL_H

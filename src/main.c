@@ -1,18 +1,10 @@
 #include <estd/argparser.h>
 #include <estd/efile.h>
-#include <pthread.h>
 #include <stdlib.h>
 
+#include "encrypt.h"
+#include "global.h"
 #include "thread_process.h"
-
-#define BUFFER_SIZE (1 << 20) // 1Mb
-
-#define EXIT_NO_PASSWORD_FILE_PROVIDED 1
-#define EXIT_NO_INPUT_FILE_PROVIDED 2
-#define EXIT_MORE_THAN_ONE_INPUT_FILE 3
-#define EXIT_ALGORITHM_FAILED 4
-#define EXIT_THREAD_CREATE_ERROR 5
-#define EXIT_THREAD_JOIN_ERROR 6
 
 #define CHECK_ERROR(error, what_to_free)                                       \
   if (error != OK) {                                                           \
@@ -30,61 +22,6 @@ void usage(void) {
        "encryption/decryption\n"
        "-o, --output\t Set output file\n"
        "-h, --help\t Display this help and exit");
-}
-
-int encrypt_decrypt(const string *key, freader *source, fwriter *output) {
-  if (!key || is_empty(key) || !source || !output)
-    return EXIT_ALGORITHM_FAILED;
-
-  size_t key_index = 0;
-  unsigned char buffer[BUFFER_SIZE];
-  size_t bytes_read = 0;
-  uint64_t pos = 0;
-
-  easy_error err = OK;
-  while ((bytes_read = read_bytes(source, buffer, 1, BUFFER_SIZE, &err)) > 0 &&
-         err == OK) {
-    if (bytes_read < 1024) { // Too small for multithreading
-
-      for (size_t i = 0; i < bytes_read; i++) {
-        buffer[i] ^= string_at(key, key_index, &err);
-        key_index = (i + pos) % string_length(key);
-
-        pos++;
-      }
-
-    } else {
-      pthread_t threads[NUM_THREAD];
-      thread_data_t thread_data[NUM_THREAD];
-      size_t chunk_size = bytes_read / NUM_THREAD;
-
-      // Processing chunks
-      for (size_t i = 0; i < NUM_THREAD; i++) {
-        thread_data[i].buffer = buffer;
-        thread_data[i].start = i * chunk_size;
-        thread_data[i].end =
-            (i == NUM_THREAD - 1) ? bytes_read : (i + 1) * chunk_size;
-        thread_data[i].start_pos = pos + i * chunk_size;
-        thread_data[i].key = key;
-
-        if (pthread_create(&threads[i], NULL, process_chunk, &thread_data[i]) !=
-            0)
-          return EXIT_THREAD_CREATE_ERROR;
-      }
-
-      // Join all threads
-      for (int i = 0; i < NUM_THREAD; i++) {
-        if (pthread_join(threads[i], NULL) != 0)
-          return EXIT_THREAD_JOIN_ERROR;
-      }
-
-      pos += bytes_read;
-    }
-
-    write_bytes(output, buffer, 1, bytes_read, &err);
-  }
-
-  return EXIT_SUCCESS;
 }
 
 static inline easy_error add_arguments(cmd_parser *parser) {
