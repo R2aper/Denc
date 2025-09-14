@@ -17,7 +17,6 @@
 
 #include "global.h"
 
-#define GET_IV_VALUE(iv) iv[0] | (iv[1] << 8) | (iv[2] << 16) | (iv[3] << 24)
 #define ITERATE_HASH(hash) hash = (hash * 1103515245 + 12345) % 2147483648;
 
 int get_random_bytes(void *buf, int32_t len) {
@@ -32,12 +31,10 @@ int get_random_bytes(void *buf, int32_t len) {
     return -1;
   }
   CryptReleaseContext(hProv, 0);
-  return 0;
 #else // Assuming Linux/Unix-like
   int fd = open("/dev/urandom", O_RDONLY);
-  if (fd < 0) {
+  if (fd < 0)
     return -1;
-  }
 
   ssize_t bytes_read = 0;
   while (bytes_read < len) {
@@ -46,12 +43,13 @@ int get_random_bytes(void *buf, int32_t len) {
       close(fd);
       return -1;
     }
+
     bytes_read += result;
   }
 
   close(fd);
-  return 0;
 #endif
+  return 0;
 }
 
 static easy_error read_salt_and_iv(freader *source, uint8_t *salt,
@@ -165,10 +163,8 @@ int encrypt(const string *password, freader *source, fwriter *output,
   string *key = NULL;
 
   uint8_t salt[SALT_SIZE], iv[IV_SIZE];
-  if (init_salt_and_iv(salt, iv) != 0) {
-    puts("ADADD");
+  if (init_salt_and_iv(salt, iv) != 0)
     return EXIT_ALGORITHM_FAILED;
-  }
 
   key = derive_key_with_salt(password, salt, KEY_SIZE);
   if (!key)

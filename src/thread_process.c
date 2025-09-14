@@ -50,16 +50,14 @@ int multithreading_processing(const string *key, unsigned char *buffer,
   if (num_thread <= 0 || num_thread > tmp)
     num_thread = tmp;
 
-  printf("%d\n", num_thread);
-
   // I hate you cl compiler
   thrd_t threads[
 #ifdef _MSC_VER
       NUM_THREAD
 #else
-      num_thread
+      num_thread];
+  num_thread = NUM_THREAD;
 #endif
-  ];
 
   thread_data_t thread_data[
 #ifdef _MSC_VER
