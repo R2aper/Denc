@@ -3,11 +3,13 @@
 #include <estd/efile.h>
 #include <estd/estring.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 #ifdef _WIN32
-#include <wincrypt.h>
 #include <windows.h>
+
+#include <wincrypt.h>
 #else
 #include <fcntl.h>
 #include <unistd.h>
@@ -18,7 +20,7 @@
 #define GET_IV_VALUE(iv) iv[0] | (iv[1] << 8) | (iv[2] << 16) | (iv[3] << 24)
 #define ITERATE_HASH(hash) hash = (hash * 1103515245 + 12345) % 2147483648;
 
-int get_random_bytes(void *buf, ssize_t len) {
+int get_random_bytes(void *buf, int32_t len) {
 #ifdef _WIN32
   HCRYPTPROV hProv;
   if (!CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL,
@@ -176,7 +178,7 @@ int encrypt(const string *password, freader *source, fwriter *output,
   if (err != OK)
     return EXIT_ERROR_WRITING_SALT_IV;
 
-  uint32_t pos = 0;
+  uint64_t pos = 0;
 
   size_t bytes_read;
   uint8_t buffer[BUFFER_SIZE];
@@ -240,7 +242,7 @@ int decrypt(const string *password, freader *source, fwriter *output,
   if (!key)
     return EXIT_COULDNT_CREATE_KEY;
 
-  uint32_t pos = 0;
+  uint64_t pos = 0;
 
   size_t bytes_read;
   uint8_t buffer[BUFFER_SIZE];

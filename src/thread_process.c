@@ -22,10 +22,10 @@
 #define GET_NUM_THREADS(num_thread) num_thread = sysconf(_SC_NPROCESSORS_ONLN)
 #endif
 
-inline int process_chunk(void *arg) {
+int process_chunk(void *arg) {
   thread_data_t *data = (thread_data_t *)arg;
   size_t key_index = 0;
-  uint32_t global_pos = 0;
+  uint64_t global_pos = 0;
   easy_error err = OK;
 
   for (size_t i = data->start; i < data->end; i++) {
@@ -41,9 +41,9 @@ inline int process_chunk(void *arg) {
   return 0;
 }
 
-inline int multithreading_processing(const string *key, unsigned char *buffer,
-                                     int num_thread, size_t bytes_read,
-                                     const unsigned char *iv, uint32_t pos) {
+int multithreading_processing(const string *key, unsigned char *buffer,
+                              int num_thread, size_t bytes_read,
+                              const uint8_t *iv, uint64_t pos) {
   int tmp;
   GET_NUM_THREADS(tmp);
 

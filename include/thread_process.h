@@ -12,7 +12,7 @@ typedef struct thread_data_t {
   size_t end;
   uint64_t start_pos;
   const string *key;
-  const unsigned char *iv;
+  const uint8_t *iv;
 
 } thread_data_t;
 
@@ -37,6 +37,6 @@ int process_chunk(void *arg);
  */
 int multithreading_processing(const string *key, unsigned char *buffer,
                               int num_thread, size_t bytes_read,
-                              const unsigned char *iv, uint32_t pos);
+                              const uint8_t *iv, uint64_t pos);
 
 #endif // THREAD_PROCES_H
