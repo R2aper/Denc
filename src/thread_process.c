@@ -1,12 +1,28 @@
 #include "thread_process.h"
 
 #include <estd/estring.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <threads.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
 
 #include "global.h"
 
-int process_chunk(void *arg) {
+/// @brief Macros for getting number of CPU THREADS
+#ifdef WIN32
+#define GET_NUM_THREADS(num_thread)                                            \
+  SYSTEM_INFO sysinfo;                                                         \
+  GetSystemInfo(&sysinfo);                                                     \
+  num_thread = sysinfo.dwNumberOfProcessors
+#else
+#define GET_NUM_THREADS(num_thread) num_thread = sysconf(_SC_NPROCESSORS_ONLN)
+#endif
+
+inline int process_chunk(void *arg) {
   thread_data_t *data = (thread_data_t *)arg;
   size_t key_index = 0;
   uint32_t global_pos = 0;
@@ -25,11 +41,34 @@ int process_chunk(void *arg) {
   return 0;
 }
 
-int multithreading_processing(const string *key, unsigned char *buffer,
-                              int num_thread, size_t bytes_read,
-                              const unsigned char *iv, uint32_t pos) {
-  thrd_t threads[num_thread];
-  thread_data_t thread_data[num_thread];
+inline int multithreading_processing(const string *key, unsigned char *buffer,
+                                     int num_thread, size_t bytes_read,
+                                     const unsigned char *iv, uint32_t pos) {
+  int tmp;
+  GET_NUM_THREADS(tmp);
+
+  if (num_thread <= 0 || num_thread > tmp)
+    num_thread = tmp;
+
+  printf("%d\n", num_thread);
+
+  // I hate you cl compiler
+  thrd_t threads[
+#ifdef _MSC_VER
+      NUM_THREAD
+#else
+      num_thread
+#endif
+  ];
+
+  thread_data_t thread_data[
+#ifdef _MSC_VER
+      NUM_THREAD
+#else
+      num_thread
+#endif
+  ];
+
   size_t chunk_size = bytes_read / num_thread;
 
   // Processing chunks

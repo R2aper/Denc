@@ -12,7 +12,7 @@
     goto cleanup;                                                              \
   }
 
-void usage(void) {
+inline static void usage(void) {
   puts(
       "Usage: denc [OPTIONS]... [FILE]\n"
       "Encrypt/Decrypt given file with key using xor\n"
@@ -24,6 +24,7 @@ void usage(void) {
       "-e, --encypt\t\t\t\t Encrypt file\n"
       "-d, --decrypt\t\t\t\t Decrypt file\n"
       "-o, --output\t\t\t\t Set output file\n"
+      "-t, --threads\t\t\t\t Set number of threads to use\n"
       "-h, --help\t\t\t\t Display this help and exit");
 }
 
@@ -42,6 +43,10 @@ static inline easy_error add_arguments(cmd_parser *parser) {
   if (err != OK)
     return err;
 
+  cmd_parser_add(parser, "-t", "--threads", SINGLE_OPTION);
+  if (err != OK)
+    return err;
+
   cmd_parser_add(parser, "-e", "--encrypt", FLAG);
   if (err != OK)
     return err;
@@ -56,7 +61,8 @@ static inline easy_error add_arguments(cmd_parser *parser) {
 static inline easy_error check_arguments(cmd_parser *parser,
                                          bool *password_flag, bool *output_flag,
                                          bool *help_flag, bool *encrypt_flag,
-                                         bool *decrypt_flag) {
+                                         bool *decrypt_flag,
+                                         bool *threads_flag) {
   easy_error err = OK;
 
   *help_flag = cmd_is_set(parser, "-h", &err);
@@ -79,6 +85,10 @@ static inline easy_error check_arguments(cmd_parser *parser,
   if (err != OK)
     return err;
 
+  *threads_flag = cmd_is_set(parser, "-t", &err);
+  if (err != OK)
+    return err;
+
   return OK;
 }
 
@@ -92,12 +102,13 @@ int main(int argc, char *argv[]) {
                *path_to_input_file = NULL;
 
   bool password_flag = false, output_flag = false, help_flag = false,
-       encrypt_flag = false, decrypt_flag = false;
+       encrypt_flag = false, decrypt_flag = false, threads_flag = false;
 
   string *path_to_output_file =
       NULL; // This would be not NULL if user didn't pass output file
 
   PROGRAM_MODE mode = 0;
+  int num_threads = 0;
 
   // Creating parser
   cmd_parser *parser = cmd_parser_create();
@@ -121,7 +132,7 @@ int main(int argc, char *argv[]) {
   }
 
   error = check_arguments(parser, &password_flag, &output_flag, &help_flag,
-                          &encrypt_flag, &decrypt_flag);
+                          &encrypt_flag, &decrypt_flag, &threads_flag);
   CHECK_ERROR(error);
 
   if (help_flag) {
@@ -193,6 +204,11 @@ int main(int argc, char *argv[]) {
     CHECK_ERROR(error);
   }
 
+  if (threads_flag) {
+    const string *thrds = cmd_get_value(parser, "-t", &error);
+    num_threads = atoi(string_cstr(thrds));
+  }
+
   // Opening files
   input_file = openr(string_cstr(path_to_input_file), READ_BIN, &error);
   CHECK_ERROR(error);
@@ -209,7 +225,7 @@ int main(int argc, char *argv[]) {
   password = read_file(password_file, &error);
   CHECK_ERROR(error);
 
-  error = encrypt_decrypt(password, input_file, output_file, mode);
+  error = encrypt_decrypt(password, input_file, output_file, mode, num_threads);
 
 cleanup: // Goto place to cleanup all allocated stuff
   if (parser)

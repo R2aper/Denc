@@ -151,7 +151,8 @@ static inline string *derive_key_with_salt(const string *password,
   return key;
 }
 
-int encrypt(const string *password, freader *source, fwriter *output) {
+int encrypt(const string *password, freader *source, fwriter *output,
+            int num_threads) {
   if (!password || !password->data || is_empty(password))
     return EXIT_PASSWORD_ERROR;
 
@@ -194,8 +195,8 @@ int encrypt(const string *password, freader *source, fwriter *output) {
       }
 
     } else {
-      int result =
-          multithreading_processing(key, buffer, 0, bytes_read, iv, pos);
+      int result = multithreading_processing(key, buffer, num_threads,
+                                             bytes_read, iv, pos);
 
       if (result != 0) {
         string_free_(key);
@@ -219,7 +220,8 @@ int encrypt(const string *password, freader *source, fwriter *output) {
   return (err == OK) ? EXIT_SUCCESS : err;
 }
 
-int decrypt(const string *password, freader *source, fwriter *output) {
+int decrypt(const string *password, freader *source, fwriter *output,
+            int num_threads) {
   if (!password || !password->data || is_empty(password))
     return EXIT_PASSWORD_ERROR;
 
@@ -258,8 +260,8 @@ int decrypt(const string *password, freader *source, fwriter *output) {
 
     } else {
 
-      int result =
-          multithreading_processing(key, buffer, 0, bytes_read, iv, pos);
+      int result = multithreading_processing(key, buffer, num_threads,
+                                             bytes_read, iv, pos);
 
       if (result != 0) {
         string_free_(key);

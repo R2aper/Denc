@@ -22,7 +22,8 @@ uint32_t ced_hash_fnv1a(const void *key, size_t length);
  *
  * @return
  */
-int encrypt(const string *password, freader *source, fwriter *output);
+int encrypt(const string *password, freader *source, fwriter *output,
+            int num_threads);
 
 /*
  * @brief
@@ -33,10 +34,11 @@ int encrypt(const string *password, freader *source, fwriter *output);
  *
  * @return
  */
-int decrypt(const string *password, freader *source, fwriter *output);
+int decrypt(const string *password, freader *source, fwriter *output,
+            int num_threads);
 
-#define encrypt_decrypt(password, source, output, mode)                        \
-  (mode == DECRYPT) ? decrypt(password, source, output)                        \
-                    : encrypt(password, source, output)
+#define encrypt_decrypt(password, source, output, mode, num_threads)           \
+  (mode == DECRYPT) ? decrypt(password, source, output, num_threads)           \
+                    : encrypt(password, source, output, num_threads)
 
 #endif // ENCRYPT_H

@@ -28,7 +28,8 @@ int process_chunk(void *arg);
  *
  * @param key Key of encryption/decryption
  * @param buffer Buffer of readed part of file
- * @param num_thread Number of threads
+ * @param num_thread Number of threads(pass 0 to chose number of your cpu
+ * threads)
  * @param bytes_read How many bytes are readed
  * @pos Position of pointer in file
  *
