@@ -18,10 +18,11 @@ void usage(void) {
        "Encrypt/Decrypt given file with key using xor\n"
        "\n"
        "Options:\n"
-       "-k, --key <path to key file>\t Provide key that would be used for "
+       "-p, --password <path to password file>\t Provide file that contain "
+       "password that would be used for "
        "encryption/decryption\n"
-       "-o, --output\t Set output file\n"
-       "-h, --help\t Display this help and exit");
+       "-o, --output\t\t\t\t Set output file\n"
+       "-h, --help\t\t\t\t Display this help and exit");
 }
 
 static inline easy_error add_arguments(cmd_parser *parser) {
