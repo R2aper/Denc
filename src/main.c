@@ -114,7 +114,8 @@ int main(int argc, char *argv[]) {
   cmd_parser *parser = cmd_parser_create();
   if (!parser) {
     fprintf(stderr, "Error of creating parser!\n");
-    return ALLOCATION_FAILED;
+    error = ALLOCATION_FAILED;
+    goto cleanup;
   }
 
   // Adding arguments
@@ -137,19 +138,18 @@ int main(int argc, char *argv[]) {
 
   if (help_flag) {
     usage();
-    cmd_parser_free(parser);
-    return EXIT_SUCCESS;
+    goto cleanup;
   }
 
   if (encrypt_flag && decrypt_flag) {
     fprintf(stderr, "Fatal! provide both encrypt and decrypt flag mode!\n");
-    cmd_parser_free(parser);
-    return EXIT_INVALID_MODE;
+    error = EXIT_INVALID_MODE;
+    goto cleanup;
 
   } else if (!encrypt_flag && !decrypt_flag) {
     fprintf(stderr, "Fatal! No flag mode provide!\n");
-    cmd_parser_free(parser);
-    return EXIT_INVALID_MODE;
+    error = EXIT_INVALID_MODE;
+    goto cleanup;
   }
 
   mode = (encrypt_flag) ? ENCRYPT : DECRYPT;
@@ -187,7 +187,6 @@ int main(int argc, char *argv[]) {
 
   } else {
     fprintf(stderr, "Fatal! No password file provided!\n");
-    cmd_parser_free(parser);
     error = EXIT_NO_PASSWORD_FILE_PROVIDED;
     goto cleanup;
   }
@@ -200,7 +199,6 @@ int main(int argc, char *argv[]) {
   } else {
     path_to_output_file = string_from_cstr(string_cstr(path_to_input_file));
     error = string_append(path_to_output_file, ".x"); // add .x extension
-
     CHECK_ERROR(error);
   }
 
