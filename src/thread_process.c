@@ -51,13 +51,7 @@ int multithreading_processing(const string *key, unsigned char *buffer,
     num_thread = tmp;
 
   // I hate you cl compiler
-  thrd_t threads[
-#ifdef _MSC_VER
-      NUM_THREAD
-#else
-      num_thread];
-  num_thread = NUM_THREAD;
-#endif
+  thrd_t threads[num_thread];
 
   thread_data_t thread_data[
 #ifdef _MSC_VER
@@ -66,6 +60,10 @@ int multithreading_processing(const string *key, unsigned char *buffer,
       num_thread
 #endif
   ];
+
+#ifdef _MSC_VER
+  num_thread = NUM_THREAD;
+#endif
 
   size_t chunk_size = bytes_read / num_thread;
 
