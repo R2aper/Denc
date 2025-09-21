@@ -25,6 +25,7 @@ inline static void usage(void) {
       "-d, --decrypt\t\t\t\t Decrypt data\n"
       "-o, --output\t\t\t\t Set output files\n"
       "-t, --threads\t\t\t\t Set number of threads to use\n"
+      "-v, --verbose\t\t\t\t Verbosely list files processed\n"
       "-h, --help\t\t\t\t Display this help and exit");
 }
 
@@ -32,6 +33,10 @@ static inline easy_error add_arguments(cmd_parser *parser) {
   easy_error err = OK;
 
   err = cmd_parser_add(parser, "-h", "--help", FLAG);
+  if (err != OK)
+    return err;
+
+  err = cmd_parser_add(parser, "-v", "--verbose", FLAG);
   if (err != OK)
     return err;
 
@@ -61,11 +66,15 @@ static inline easy_error add_arguments(cmd_parser *parser) {
 static inline easy_error check_arguments(cmd_parser *parser,
                                          bool *password_flag, bool *output_flag,
                                          bool *help_flag, bool *encrypt_flag,
-                                         bool *decrypt_flag,
-                                         bool *threads_flag) {
+                                         bool *decrypt_flag, bool *threads_flag,
+                                         bool *verbose_flag) {
   easy_error err = OK;
 
   *help_flag = cmd_is_set(parser, "-h", &err);
+  if (err != OK)
+    return err;
+
+  *verbose_flag = cmd_is_set(parser, "-v", &err);
   if (err != OK)
     return err;
 
@@ -125,7 +134,8 @@ int main(int argc, char *argv[]) {
   const string *path_to_password_file = NULL;
 
   bool password_flag = false, output_flag = false, help_flag = false,
-       encrypt_flag = false, decrypt_flag = false, threads_flag = false;
+       encrypt_flag = false, decrypt_flag = false, threads_flag = false,
+       verbose_flag = false;
 
   PROGRAM_MODE mode = 0;
   int num_threads = 0;
@@ -153,9 +163,9 @@ int main(int argc, char *argv[]) {
     goto cleanup;
   }
 
-  result.code =
-      check_arguments(parser, &password_flag, &output_flag, &help_flag,
-                      &encrypt_flag, &decrypt_flag, &threads_flag);
+  result.code = check_arguments(parser, &password_flag, &output_flag,
+                                &help_flag, &encrypt_flag, &decrypt_flag,
+                                &threads_flag, &verbose_flag);
   CHECK_ERROR(result);
 
   if (help_flag) {
@@ -249,6 +259,10 @@ int main(int argc, char *argv[]) {
     output_file =
         openw(string_cstr(path_to_output_file), WRITE_BIN, &result.code);
     CHECK_ERROR(result);
+
+    if (verbose_flag)
+      printf((mode == ENCRYPT) ? "Encyption %s\n" : "Decryption %s\n",
+             string_cstr(path_to_input_file));
 
     result =
         encrypt_decrypt(mode, password, input_file, output_file, num_threads);
