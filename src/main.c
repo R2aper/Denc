@@ -93,6 +93,11 @@ static inline easy_error check_arguments(cmd_parser *parser,
 }
 
 int main(int argc, char *argv[]) {
+  if (argc < 2) {
+    usage();
+    return EXIT_FAILURE;
+  }
+
   easy_error error = OK;
   string *password = NULL;
   freader *input_file = NULL, *password_file = NULL;
