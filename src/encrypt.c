@@ -2,9 +2,9 @@
 
 #include <estd/efile.h>
 #include <estd/estring.h>
-#include <stdint.h>
-#include <stdio.h>
+#include <estd/hash.h>
 #include <stdlib.h>
+#include <string.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -17,15 +17,13 @@
 
 #include "global.h"
 
-#define ITERATE_HASH(hash) hash = (hash * 1103515245 + 12345) % 2147483648;
-
 int get_random_bytes(void *buf, int32_t len) {
 #ifdef _WIN32
   HCRYPTPROV hProv;
   if (!CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL,
-                           CRYPT_VERIFYCONTEXT)) {
+                           CRYPT_VERIFYCONTEXT))
     return -1;
-  }
+
   if (!CryptGenRandom(hProv, len, (BYTE *)buf)) {
     CryptReleaseContext(hProv, 0);
     return -1;
@@ -52,6 +50,7 @@ int get_random_bytes(void *buf, int32_t len) {
   return 0;
 }
 
+// Read before decrypting
 static easy_error read_salt_and_iv(freader *source, uint8_t *salt,
                                    uint8_t *iv) {
   if (!source || !salt || !iv)
@@ -71,6 +70,7 @@ static easy_error read_salt_and_iv(freader *source, uint8_t *salt,
   return OK;
 }
 
+// Write before encrypting
 static easy_error write_salt_and_iv(fwriter *output, const uint8_t *salt,
                                     const uint8_t *iv) {
   if (!output || !salt || !iv)
@@ -89,21 +89,6 @@ static easy_error write_salt_and_iv(fwriter *output, const uint8_t *salt,
   return OK;
 }
 
-uint32_t ced_hash_fnv1a(const void *key, size_t length) {
-  const uint32_t offset_basis = 2166136261;
-  const uint32_t prime = 16777619;
-
-  uint32_t hash = offset_basis;
-  const uint8_t *data = (const uint8_t *)key;
-
-  for (size_t i = 0; i < length; ++i) {
-    hash ^= data[i];
-    hash *= prime;
-  }
-
-  return hash;
-}
-
 static inline int init_salt_and_iv(uint8_t *salt, uint8_t *iv) {
   if (get_random_bytes(salt, SALT_SIZE) != 0) {
     return -1;
@@ -115,34 +100,93 @@ static inline int init_salt_and_iv(uint8_t *salt, uint8_t *iv) {
   return 0;
 }
 
-static inline string *derive_key_with_salt(const string *password,
-                                           const uint8_t *salt,
-                                           size_t key_size) {
-  string *key = NULL,
-         *salted_password = string_from_cstr(string_cstr(password));
-  if (!salted_password)
-    return NULL;
+// Function to XOR two byte arrays
+static inline void xor_bytes(uint8_t *a, const uint8_t *b, size_t len) {
+  for (size_t i = 0; i < len; i++)
+    a[i] ^= b[i];
+}
 
-  for (size_t i = 0; i < SALT_SIZE; i++) {
-    if (string_appendc(salted_password, salt[i]) != OK) {
-      string_free_(salted_password);
-      return NULL;
-    }
+// HMAC(key, message) implementation using  sha256_hash
+static void hmac_sha256(const uint8_t *key, size_t key_len, const uint8_t *data,
+                        size_t data_len, uint8_t out[SHA256_HASH_SIZE]) {
+  uint8_t k_prime[SHA256_BLOCK_SIZE];
+  memset(k_prime, 0, SHA256_BLOCK_SIZE);
+
+  // If key is longer than block size, hash it
+  if (key_len > SHA256_BLOCK_SIZE) {
+    sha256_hash(key, key_len, k_prime);
+  } else {
+    memcpy(k_prime, key, key_len);
   }
 
-  uint64_t hash = ced_hash_fnv1a(string_cstr(salted_password),
-                                 string_length(salted_password));
-  string_free_(salted_password);
+  uint8_t o_key_pad[SHA256_BLOCK_SIZE];
+  uint8_t i_key_pad[SHA256_BLOCK_SIZE];
+  for (int i = 0; i < SHA256_BLOCK_SIZE; i++) {
+    o_key_pad[i] = 0x5c ^ k_prime[i];
+    i_key_pad[i] = 0x36 ^ k_prime[i];
+  }
 
-  key = string_init_empty();
+  // Inner hash
+  sha256_buff inner_buff;
+  sha256_init(&inner_buff);
+  sha256_update(&inner_buff, i_key_pad, SHA256_BLOCK_SIZE);
+  sha256_update(&inner_buff, data, data_len);
+  sha256_finalize(&inner_buff);
+  uint8_t inner_hash[SHA256_HASH_SIZE];
+  sha256_read(&inner_buff, inner_hash);
+
+  // Outer hash
+  sha256_buff outer_buff;
+  sha256_init(&outer_buff);
+  sha256_update(&outer_buff, o_key_pad, SHA256_BLOCK_SIZE);
+  sha256_update(&outer_buff, inner_hash, SHA256_HASH_SIZE);
+  sha256_finalize(&outer_buff);
+  sha256_read(&outer_buff, out);
+}
+
+// PBKDF2 implementation using HMAC-SHA256
+static void pbkdf2_hmac_sha256(const uint8_t *password, size_t password_len,
+                               const uint8_t *salt, size_t salt_len,
+                               uint32_t iterations, uint8_t *out_key) {
+  uint8_t U[SHA256_HASH_SIZE];
+  uint8_t T[SHA256_HASH_SIZE];
+  uint8_t salt_and_block[SALT_SIZE + 4];
+
+  memcpy(salt_and_block, salt, salt_len);
+  // BE encoding of block number (1)
+  salt_and_block[salt_len] = 0;
+  salt_and_block[salt_len + 1] = 0;
+  salt_and_block[salt_len + 2] = 0;
+  salt_and_block[salt_len + 3] = 1;
+
+  // First iteration
+  hmac_sha256(password, password_len, salt_and_block, salt_len + 4, U);
+  memcpy(T, U, SHA256_HASH_SIZE);
+
+  // Subsequent iterations
+  for (uint32_t i = 1; i < iterations; i++) {
+    hmac_sha256(password, password_len, U, SHA256_HASH_SIZE, U);
+    xor_bytes(T, U, SHA256_HASH_SIZE);
+  }
+
+  memcpy(out_key, T, KEY_SIZE > SHA256_HASH_SIZE ? SHA256_HASH_SIZE : KEY_SIZE);
+}
+
+// Generate key from password and salt
+static inline string *derive_key_with_salt(const string *password,
+                                           const uint8_t *salt) {
+  uint8_t key_bytes[KEY_SIZE];
+
+  pbkdf2_hmac_sha256((const uint8_t *)string_cstr(password),
+                     string_length(password), salt, SALT_SIZE,
+                     PBKDF2_ITERATIONS, key_bytes);
+
+  string *key = string_init_empty();
   if (!key)
     return NULL;
 
-  for (size_t i = 0; i < key_size; i++) {
-    for (int j = 0; j < 100; j++)
-      ITERATE_HASH(hash);
-
-    if (string_appendc(key, (char)(hash % 256)) != OK) {
+  for (size_t i = 0; i < KEY_SIZE; i++) {
+    if (string_appendc(key, key_bytes[i]) != OK) {
       string_free_(key);
       return NULL;
     }
@@ -166,7 +210,7 @@ int encrypt(const string *password, freader *source, fwriter *output,
   if (init_salt_and_iv(salt, iv) != 0)
     return EXIT_ALGORITHM_FAILED;
 
-  key = derive_key_with_salt(password, salt, KEY_SIZE);
+  key = derive_key_with_salt(password, salt);
   if (!key)
     return EXIT_COULDNT_CREATE_KEY;
 
@@ -234,7 +278,7 @@ int decrypt(const string *password, freader *source, fwriter *output,
   if (err != OK)
     return EXIT_ERROR_READING_SALT_IV;
 
-  key = derive_key_with_salt(password, salt, KEY_SIZE);
+  key = derive_key_with_salt(password, salt);
   if (!key)
     return EXIT_COULDNT_CREATE_KEY;
 

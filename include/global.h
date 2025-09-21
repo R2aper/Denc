@@ -6,6 +6,8 @@
 #define KEY_SIZE 32
 #define SALT_SIZE 8
 #define IV_SIZE 16
+#define SHA256_BLOCK_SIZE 64
+#define PBKDF2_ITERATIONS 10000
 
 // Thread macros
 #define NUM_THREAD 4
