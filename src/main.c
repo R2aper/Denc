@@ -176,15 +176,9 @@ int main(int argc, char *argv[]) {
   mode = (encrypt_flag) ? ENCRYPT : DECRYPT;
 
   if (threads_flag) {
-#ifdef _MSC_VER
-    printf("Setting number of threads doesn't support for MSC!\n Set a default "
-           "value:%d\n",
-           NUM_THREAD);
-#else
     const string *thrds = cmd_get_value(parser, "-t", &result.code);
     CHECK_ERROR(result);
     num_threads = atoi(string_cstr(thrds));
-#endif
   }
 
   // Getting password
