@@ -29,23 +29,13 @@ int get_random_bytes(void *buf, int32_t len);
  *
  * @return 0 or error
  */
-int encrypt(const string *password, freader *source, fwriter *output,
-            int num_threads);
+int encrypt_decrypt(PROGRAM_MODE mode, const string *password, freader *source,
+                    fwriter *output, int num_threads);
 
-/**
- * @brief Decrypt source's bytes with password and write them to output
- *
- * @param password String containing password
- * @param source Source file
- * @param output Output file
- *
- * @return 0 or error
- */
-int decrypt(const string *password, freader *source, fwriter *output,
-            int num_threads);
+#define encrypt(password, source, output, num_threads)                         \
+  encrypt_decrypt(ENCRYPT, password, source, output, num_threads)
 
-#define encrypt_decrypt(password, source, output, mode, num_threads)           \
-  (mode == DECRYPT) ? decrypt(password, source, output, num_threads)           \
-                    : encrypt(password, source, output, num_threads)
+#define decrypt(password, source, output, num_threads)                         \
+  encrypt_decrypt(DECRYPT, password, source, output, num_threads)
 
 #endif // ENCRYPT_H

@@ -1,3 +1,4 @@
+#include "encrypt.h"
 #include "thread_process.h"
 
 #include <estd/efile.h>
@@ -195,96 +196,43 @@ static inline string *derive_key_with_salt(const string *password,
   return key;
 }
 
-int encrypt(const string *password, freader *source, fwriter *output,
-            int num_threads) {
+int encrypt_decrypt(PROGRAM_MODE mode, const string *password, freader *source,
+                    fwriter *output, int num_threads) {
   if (!password || !password->data || is_empty(password))
     return EXIT_PASSWORD_ERROR;
 
   if (!source || !output)
     return EXIT_FILE_ERROR;
 
+  if (mode != ENCRYPT && mode != DECRYPT)
+    return EXIT_INVALID_MODE;
+
   easy_error err = OK;
   string *key = NULL;
 
   uint8_t salt[SALT_SIZE], iv[IV_SIZE];
-  if (init_salt_and_iv(salt, iv) != 0)
-    return EXIT_ALGORITHM_FAILED;
+  if (mode == ENCRYPT) {
+    if (init_salt_and_iv(salt, iv) != 0)
+      return EXIT_ALGORITHM_FAILED;
 
-  key = derive_key_with_salt(password, salt);
-  if (!key)
-    return EXIT_COULDNT_CREATE_KEY;
-
-  err = write_salt_and_iv(output, salt, iv);
-  if (err != OK)
-    return EXIT_ERROR_WRITING_SALT_IV;
-
-  uint64_t pos = 0;
-
-  size_t bytes_read;
-  uint8_t buffer[BUFFER_SIZE];
-
-  while ((bytes_read = read_bytes(source, buffer, 1, BUFFER_SIZE, &err)) > 0 &&
-         err == OK) {
-    if (bytes_read < 1024) { // Too small for multithreading
-
-      for (size_t i = 0; i < bytes_read; i++) {
-        size_t key_index = (pos + i) % string_length(key);
-        char key_char = string_at(key, key_index, &err);
-        if (err != OK)
-          break;
-
-        buffer[i] ^= key_char ^ iv[(pos + i) % IV_SIZE];
-      }
-
-    } else {
-      int result = multithreading_processing(key, buffer, num_threads,
-                                             bytes_read, iv, pos);
-
-      if (result != 0) {
-        string_free_(key);
-        return result;
-      }
-    }
-
-    if (err != OK) // Error from single-threaded loop
-      break;
-
-    write_bytes(output, buffer, 1, bytes_read, &err);
-    if (err != OK)
-      break;
-
-    pos += bytes_read;
+  } else if (mode == DECRYPT) {
+    if (read_salt_and_iv(source, salt, iv) != 0)
+      return EXIT_ERROR_READING_SALT_IV;
   }
 
-  if (key)
-    string_free_(key);
-
-  return (err == OK) ? EXIT_SUCCESS : err;
-}
-
-int decrypt(const string *password, freader *source, fwriter *output,
-            int num_threads) {
-  if (!password || !password->data || is_empty(password))
-    return EXIT_PASSWORD_ERROR;
-
-  if (!source || !output)
-    return EXIT_FILE_ERROR;
-
-  easy_error err = OK;
-  string *key = NULL;
-
-  uint8_t salt[SALT_SIZE], iv[IV_SIZE];
-  err = read_salt_and_iv(source, salt, iv);
-  if (err != OK)
-    return EXIT_ERROR_READING_SALT_IV;
-
   key = derive_key_with_salt(password, salt);
   if (!key)
     return EXIT_COULDNT_CREATE_KEY;
 
-  uint64_t pos = 0;
+  if (mode == ENCRYPT) {
+    if (write_salt_and_iv(output, salt, iv) != 0) {
+      string_free_(key);
+      return EXIT_ERROR_WRITING_SALT_IV;
+    }
+  }
 
-  size_t bytes_read;
+  uint64_t pos = 0;
+  size_t bytes_read = 0;
   uint8_t buffer[BUFFER_SIZE];
 
   while ((bytes_read = read_bytes(source, buffer, 1, BUFFER_SIZE, &err)) > 0 &&
@@ -301,7 +249,6 @@ int decrypt(const string *password, freader *source, fwriter *output,
       }
 
     } else {
-
       int result = multithreading_processing(key, buffer, num_threads,
                                              bytes_read, iv, pos);
 

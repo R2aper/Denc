@@ -1,5 +1,6 @@
 #include <estd/argparser.h>
 #include <estd/efile.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 #include "encrypt.h"
@@ -235,7 +236,7 @@ int main(int argc, char *argv[]) {
   password = read_file(password_file, &error);
   CHECK_ERROR(error);
 
-  error = encrypt_decrypt(password, input_file, output_file, mode, num_threads);
+  error = encrypt_decrypt(mode, password, input_file, output_file, num_threads);
 
 cleanup: // Goto place to cleanup all allocated stuff
   if (parser)
