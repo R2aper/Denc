@@ -1,6 +1,5 @@
 #include <estd/argparser.h>
 #include <estd/efile.h>
-#include <stdio.h>
 #include <stdlib.h>
 
 #include "encrypt.h"
@@ -13,21 +12,18 @@
     goto cleanup;                                                              \
   }
 
-#define PRINT_ERROR(result)                                                    \
-  fprintf(stderr, "Fatal! %s\n", string_cstr((result).error_msg))
-
 inline static void usage(void) {
   puts(
-      "Usage: denc [OPTIONS]... [FILE]\n"
-      "Encrypt/Decrypt given file with key using xor\n"
+      "Usage: denc [OPTIONS] ... [FILES]\n"
+      "Encrypt/Decrypt given files with password using xor\n"
       "\n"
       "Options:\n"
       "-p, --password <path to password file>\t Provide key that would be used "
       "for "
       "encryption/decryption\n"
-      "-e, --encypt\t\t\t\t Encrypt file\n"
-      "-d, --decrypt\t\t\t\t Decrypt file\n"
-      "-o, --output\t\t\t\t Set output file\n"
+      "-e, --encypt\t\t\t\t Encrypt data\n"
+      "-d, --decrypt\t\t\t\t Decrypt data\n"
+      "-o, --output\t\t\t\t Set output files\n"
       "-t, --threads\t\t\t\t Set number of threads to use\n"
       "-h, --help\t\t\t\t Display this help and exit");
 }
@@ -43,7 +39,7 @@ static inline easy_error add_arguments(cmd_parser *parser) {
   if (err != OK)
     return err;
 
-  cmd_parser_add(parser, "-o", "--output", SINGLE_OPTION);
+  cmd_parser_add(parser, "-o", "--output", MULTIPLE_OPTION);
   if (err != OK)
     return err;
 
@@ -96,6 +92,20 @@ static inline easy_error check_arguments(cmd_parser *parser,
   return OK;
 }
 
+static inline easy_error generate_output_files(grow *output_files,
+                                               const grow *input_files) {
+  easy_error err = OK;
+  string *path_to_output_file = NULL;
+  for (size_t i = 0; i < grow_size(input_files) && err == OK; i++) {
+    const string *input_file = (string *)grow_get(input_files, i, &err);
+    path_to_output_file = string_create(string_cstr(input_file));
+    err = string_append(path_to_output_file, ".x");
+    err = grow_push(output_files, path_to_output_file);
+  }
+
+  return err;
+}
+
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     usage();
@@ -107,14 +117,15 @@ int main(int argc, char *argv[]) {
   freader *input_file = NULL, *password_file = NULL;
   fwriter *output_file = NULL;
 
-  const string *path_to_password_file = NULL, *path_to_output_file_given = NULL,
-               *path_to_input_file = NULL;
+  // This would be not NULL, if user didn't specify output_files
+  grow *output_files = NULL;
+
+  // Paths(a.k.a. string*)
+  const grow *output_files_given = NULL, *input_files = NULL;
+  const string *path_to_password_file = NULL;
 
   bool password_flag = false, output_flag = false, help_flag = false,
        encrypt_flag = false, decrypt_flag = false, threads_flag = false;
-
-  string *path_to_output_file =
-      NULL; // This would be not NULL if user didn't pass output file
 
   PROGRAM_MODE mode = 0;
   int num_threads = 0;
@@ -164,54 +175,6 @@ int main(int argc, char *argv[]) {
 
   mode = (encrypt_flag) ? ENCRYPT : DECRYPT;
 
-  // Getting input file
-  const grow *positional_args = cmd_get_pos_args(parser, &result.code);
-  CHECK_ERROR(result);
-
-  // No input file provided
-  if (grow_size(positional_args) == 0) {
-    SET_RESULT(result, EXIT_NO_INPUT_FILE_PROVIDED,
-               "No file to encrypt/decrypt provided")
-    goto cleanup;
-
-    // Provided more that 1 input file
-  } else if (grow_size(positional_args) > 1) {
-    result.error_msg = string_from_cstr("Too many input files: \n");
-    result.code = EXIT_MORE_THAN_ONE_INPUT_FILE;
-    for (size_t i = 0; i < grow_size(positional_args); i++) {
-      const string *arg = grow_get(positional_args, i, NULL);
-      string_append(result.error_msg, string_cstr(arg));
-      string_append(result.error_msg, " ");
-    }
-
-    goto cleanup;
-  }
-
-  path_to_input_file = grow_get(positional_args, 0, &result.code);
-  CHECK_ERROR(result);
-
-  // Getting password
-  if (password_flag) {
-    path_to_password_file = cmd_get_value(parser, "-p", &result.code);
-    CHECK_ERROR(result);
-
-  } else {
-    SET_RESULT(result, EXIT_NO_PASSWORD_FILE_PROVIDED,
-               "No password file provided");
-    goto cleanup;
-  }
-
-  // Getting output file
-  if (output_flag) {
-    path_to_output_file_given = cmd_get_value(parser, "-o", &result.code);
-    CHECK_ERROR(result);
-
-  } else {
-    path_to_output_file = string_from_cstr(string_cstr(path_to_input_file));
-    result.code = string_append(path_to_output_file, ".x"); // add .x extension
-    CHECK_ERROR(result);
-  }
-
   if (threads_flag) {
 #ifdef _MSC_VER
     printf("Setting number of threads doesn't support for MSC!\n Set a default "
@@ -224,16 +187,51 @@ int main(int argc, char *argv[]) {
 #endif
   }
 
-  // Opening files
-  input_file = openr(string_cstr(path_to_input_file), READ_BIN, &result.code);
+  // Getting password
+  if (password_flag) {
+    path_to_password_file = cmd_get_value(parser, "-p", &result.code);
+    CHECK_ERROR(result);
+
+  } else {
+    SET_RESULT(result, EXIT_NO_PASSWORD_FILE_PROVIDED,
+               "No password file provided");
+    goto cleanup;
+  }
+
+  // Getting input file
+  input_files = cmd_get_pos_args(parser, &result.code);
   CHECK_ERROR(result);
 
-  output_file =
-      openw(string_cstr((path_to_output_file) ? path_to_output_file
-                                              : path_to_output_file_given),
-            WRITE_BIN, &result.code);
-  CHECK_ERROR(result);
+  // No input file provided
+  if (grow_size(input_files) == 0) {
+    SET_RESULT(result, EXIT_NO_INPUT_FILE_PROVIDED,
+               "No file to encrypt/decrypt provided")
+    goto cleanup;
+  }
 
+  // Getting output file
+  if (output_flag) {
+    output_files_given = cmd_get_values(parser, "-o", &result.code);
+    CHECK_ERROR(result);
+
+    if (grow_size(output_files_given) != grow_size(input_files)) {
+      result.code = EXIT_INVALID_NUMBER_OF_OUTPUT_FILES;
+      result.error_msg = string_from_cstr(
+          "Number of input files doesn't equal to output files");
+      goto cleanup;
+    }
+
+  } else { // If user didn't proived output files, generete them
+    output_files = grow_init_empty;
+    if (!output_files) {
+      SET_RESULT(result, ALLOCATION_FAILED,
+                 easy_error_message(ALLOCATION_FAILED));
+    }
+    result.code = generate_output_files(output_files, input_files);
+    CHECK_ERROR(result);
+  }
+
+  // Open password file
   password_file =
       openr(string_cstr(path_to_password_file), READ_BIN, &result.code);
   CHECK_ERROR(result);
@@ -241,12 +239,35 @@ int main(int argc, char *argv[]) {
   password = read_file(password_file, &result.code);
   CHECK_ERROR(result);
 
-  result =
-      encrypt_decrypt(mode, password, input_file, output_file, num_threads);
+  for (size_t i = 0; i < grow_size(input_files) && result.code == OK; i++) {
+    const string *path_to_output_file = NULL, *path_to_input_file = NULL;
+
+    path_to_output_file = grow_get(
+        (!output_files) ? output_files_given : output_files, i, &result.code);
+    CHECK_ERROR(result);
+
+    path_to_input_file = grow_get(input_files, i, &result.code);
+    CHECK_ERROR(result);
+
+    input_file = openr(string_cstr(path_to_input_file), READ_BIN, &result.code);
+    CHECK_ERROR(result);
+
+    output_file =
+        openw(string_cstr(path_to_output_file), WRITE_BIN, &result.code);
+    CHECK_ERROR(result);
+
+    result =
+        encrypt_decrypt(mode, password, input_file, output_file, num_threads);
+
+    closew(output_file);
+    closer(input_file);
+    output_file = NULL;
+    input_file = NULL;
+  }
 
 cleanup: // Goto place to cleanup all allocated stuff
   if (result.code != OK)
-    PRINT_ERROR(result);
+    fprintf(stderr, "Fatal! %s\n", string_cstr((result).error_msg));
 
   if (parser)
     cmd_parser_free(parser);
@@ -258,8 +279,8 @@ cleanup: // Goto place to cleanup all allocated stuff
     closer(password_file);
   if (password)
     string_free_(password);
-  if (path_to_output_file)
-    string_free_(path_to_output_file);
+  if (output_files)
+    grow_free_(output_files, string_free_abs);
   if (result.error_msg)
     string_free_(result.error_msg);
 
