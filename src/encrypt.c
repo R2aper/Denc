@@ -91,9 +91,8 @@ static easy_error write_salt_and_iv(fwriter *output, const uint8_t *salt,
 }
 
 static inline int init_salt_and_iv(uint8_t *salt, uint8_t *iv) {
-  if (get_random_bytes(salt, SALT_SIZE) != 0) {
+  if (get_random_bytes(salt, SALT_SIZE) != 0)
     return -1;
-  }
 
   if (get_random_bytes(iv, IV_SIZE) != 0)
     return -1;
@@ -177,7 +176,6 @@ static void pbkdf2_hmac_sha256(const uint8_t *password, size_t password_len,
 static inline string *derive_key_with_salt(const string *password,
                                            const uint8_t *salt) {
   uint8_t key_bytes[KEY_SIZE];
-
   pbkdf2_hmac_sha256((const uint8_t *)string_cstr(password),
                      string_length(password), salt, SALT_SIZE,
                      PBKDF2_ITERATIONS, key_bytes);
@@ -196,38 +194,50 @@ static inline string *derive_key_with_salt(const string *password,
   return key;
 }
 
-int encrypt_decrypt(PROGRAM_MODE mode, const string *password, freader *source,
-                    fwriter *output, int num_threads) {
-  if (!password || !password->data || is_empty(password))
-    return EXIT_PASSWORD_ERROR;
+result_t encrypt_decrypt(PROGRAM_MODE mode, const string *password,
+                         freader *source, fwriter *output, int num_threads) {
+  result_t result = {0, NULL};
 
-  if (!source || !output)
-    return EXIT_FILE_ERROR;
+  // Check parametrs
+  if (!password || !password->data || is_empty(password)) {
+    RETURN_RESULT(result, EXIT_PASSWORD_ERROR, "Invalid password");
+  }
+  if (!source) {
+    RETURN_RESULT(result, EXIT_FILE_ERROR, "Invalid source file");
+  }
+  if (!output) {
+    RETURN_RESULT(result, EXIT_FILE_ERROR, "Invalid output file");
+  }
+  if (mode != ENCRYPT && mode != DECRYPT) {
+    RETURN_RESULT(result, EXIT_INVALID_MODE, "Invalid program mode")
+  }
 
-  if (mode != ENCRYPT && mode != DECRYPT)
-    return EXIT_INVALID_MODE;
-
-  easy_error err = OK;
   string *key = NULL;
 
   uint8_t salt[SALT_SIZE], iv[IV_SIZE];
   if (mode == ENCRYPT) {
-    if (init_salt_and_iv(salt, iv) != 0)
-      return EXIT_ALGORITHM_FAILED;
+    if (init_salt_and_iv(salt, iv) != 0) {
+      RETURN_RESULT(result, EXIT_INIT_SALT_IV,
+                    "Error while initialization salt and iv");
+    }
 
   } else if (mode == DECRYPT) {
-    if (read_salt_and_iv(source, salt, iv) != 0)
-      return EXIT_ERROR_READING_SALT_IV;
+    if (read_salt_and_iv(source, salt, iv) != 0) {
+      RETURN_RESULT(result, EXIT_ERROR_READING_SALT_IV,
+                    "Error while reading salt and iv from source file");
+    }
   }
 
   key = derive_key_with_salt(password, salt);
-  if (!key)
-    return EXIT_COULDNT_CREATE_KEY;
+  if (!key) {
+    RETURN_RESULT(result, EXIT_COULDNT_CREATE_KEY, "Error while creating key");
+  }
 
   if (mode == ENCRYPT) {
     if (write_salt_and_iv(output, salt, iv) != 0) {
       string_free_(key);
-      return EXIT_ERROR_WRITING_SALT_IV;
+      RETURN_RESULT(result, EXIT_ERROR_WRITING_SALT_IV,
+                    "Error while writing salt and iv to output file");
     }
   }
 
@@ -235,35 +245,38 @@ int encrypt_decrypt(PROGRAM_MODE mode, const string *password, freader *source,
   size_t bytes_read = 0;
   uint8_t buffer[BUFFER_SIZE];
 
-  while ((bytes_read = read_bytes(source, buffer, 1, BUFFER_SIZE, &err)) > 0 &&
-         err == OK) {
+  while ((bytes_read =
+              read_bytes(source, buffer, 1, BUFFER_SIZE, &result.code)) > 0 &&
+         result.code == OK) {
     if (bytes_read < 1024) { // Too small for multithreading
 
       for (size_t i = 0; i < bytes_read; i++) {
         size_t key_index = (pos + i) % string_length(key);
-        char key_char = string_at(key, key_index, &err);
-        if (err != OK)
+        char key_char = string_at(key, key_index, &result.code);
+        if (result.code != OK) {
+          result.error_msg = string_from_cstr(easy_error_message(result.code));
           break;
+        }
 
         buffer[i] ^= key_char ^ iv[(pos + i) % IV_SIZE];
       }
 
     } else {
-      int result = multithreading_processing(key, buffer, num_threads,
-                                             bytes_read, iv, pos);
+      result = multithreading_processing(key, buffer, num_threads, bytes_read,
+                                         iv, pos);
 
-      if (result != 0) {
-        string_free_(key);
-        return result;
-      }
+      if (result.code != 0)
+        break;
     }
 
-    if (err != OK) // Error from single-threaded loop
+    if (result.code != OK) // Error from single-threaded loop
       break;
 
-    write_bytes(output, buffer, 1, bytes_read, &err);
-    if (err != OK)
+    write_bytes(output, buffer, 1, bytes_read, &result.code);
+    if (result.code != OK) {
+      result.error_msg = string_from_cstr(easy_error_message(result.code));
       break;
+    }
 
     pos += bytes_read;
   }
@@ -271,5 +284,5 @@ int encrypt_decrypt(PROGRAM_MODE mode, const string *password, freader *source,
   if (key)
     string_free_(key);
 
-  return (err == OK) ? EXIT_SUCCESS : err;
+  return result;
 }

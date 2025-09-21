@@ -1,6 +1,8 @@
 #ifndef GLOBAL_H
 #define GLOBAL_H
 
+typedef struct string string;
+
 // Encrypt macros
 #define BUFFER_SIZE (1 << 20) // 1Mb
 #define KEY_SIZE 32
@@ -12,11 +14,25 @@
 // Thread macros
 #define NUM_THREAD 4
 
+typedef struct result_t {
+  int code;
+  string *error_msg;
+
+} result_t;
+
+#define SET_RESULT(result, _code_, _error_msg_)                                \
+  (result).code = _code_;                                                      \
+  (result).error_msg = string_from_cstr(_error_msg_);
+
+#define RETURN_RESULT(result, _code_, _error_msg_)                             \
+  SET_RESULT(result, _code_, _error_msg_);                                     \
+  return result;
+
 // Exit errors code
 #define EXIT_NO_PASSWORD_FILE_PROVIDED 1
 #define EXIT_NO_INPUT_FILE_PROVIDED 2
 #define EXIT_MORE_THAN_ONE_INPUT_FILE 3
-#define EXIT_ALGORITHM_FAILED 4
+#define EXIT_INIT_SALT_IV 4
 #define EXIT_THREAD_CREATE_ERROR 5
 #define EXIT_THREAD_JOIN_ERROR 6
 #define EXIT_INVALID_MODE 7

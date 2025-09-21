@@ -1,5 +1,6 @@
 #include "thread_process.h"
 
+#include <estd/eerror.h>
 #include <estd/estring.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,7 +23,7 @@
 #define GET_NUM_THREADS(num_thread) num_thread = sysconf(_SC_NPROCESSORS_ONLN)
 #endif
 
-int process_chunk(void *arg) {
+easy_error process_chunk(void *arg) {
   thread_data_t *data = (thread_data_t *)arg;
   size_t key_index = 0;
   uint64_t global_pos = 0;
@@ -41,28 +42,24 @@ int process_chunk(void *arg) {
   return 0;
 }
 
-int multithreading_processing(const string *key, unsigned char *buffer,
-                              int num_thread, size_t bytes_read,
-                              const uint8_t *iv, uint64_t pos) {
-  int tmp;
+result_t multithreading_processing(const string *key, unsigned char *buffer,
+                                   int num_thread, size_t bytes_read,
+                                   const uint8_t *iv, uint64_t pos) {
+  result_t result = {0, NULL};
+  int tmp = 0;
   GET_NUM_THREADS(tmp);
 
   if (num_thread <= 0 || num_thread > tmp)
     num_thread = tmp;
 
   // I hate you cl compiler
-  thrd_t threads[num_thread];
-
-  thread_data_t thread_data[
 #ifdef _MSC_VER
-      NUM_THREAD
-#else
-      num_thread
-#endif
-  ];
-
-#ifdef _MSC_VER
+  thrd_t threads[NUM_THREAD];
+  thread_data_t thread_data[NUM_THREAD];
   num_thread = NUM_THREAD;
+#else
+  thrd_t threads[num_thread];
+  thread_data_t thread_data[num_thread];
 #endif
 
   size_t chunk_size = bytes_read / num_thread;
@@ -77,18 +74,24 @@ int multithreading_processing(const string *key, unsigned char *buffer,
     thread_data[i].key = key;
     thread_data[i].iv = iv;
 
-    if (thrd_create(&threads[i], process_chunk, &thread_data[i]) != 0)
-      return EXIT_THREAD_CREATE_ERROR;
+    if (thrd_create(&threads[i], process_chunk, &thread_data[i]) != 0) {
+      RETURN_RESULT(result, EXIT_THREAD_CREATE_ERROR,
+                    "Error while creating thread");
+    }
   }
 
   // Join all threads
   for (int i = 0; i < num_thread; i++) {
     int res = 0;
-    if (thrd_join(threads[i], &res) != 0)
-      return EXIT_THREAD_JOIN_ERROR;
-    if (res != 0)
-      return res; // Propagate error from thread
+    if (thrd_join(threads[i], &res) != 0) {
+      RETURN_RESULT(result, EXIT_THREAD_JOIN_ERROR,
+                    "Error while joining threads");
+    }
+
+    if (res != 0) { // Propagate error from thread
+      RETURN_RESULT(result, res, easy_error_message(res));
+    }
   }
 
-  return EXIT_SUCCESS;
+  return result;
 }

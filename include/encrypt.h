@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+typedef struct result_t result_t;
 typedef struct string string;
 typedef struct freader freader;
 typedef struct fwriter fwriter;
@@ -16,7 +17,7 @@ typedef enum PROGRAM_MODE { DECRYPT = 0, ENCRYPT = 1 } PROGRAM_MODE;
  * @param buf Pointer to array where random bytes are write
  * @param len Lenght of buf
  *
- * @return 0 or error
+ * @return 0 or error code
  */
 int get_random_bytes(void *buf, int32_t len);
 
@@ -27,10 +28,10 @@ int get_random_bytes(void *buf, int32_t len);
  * @param source Source file
  * @param output Output file
  *
- * @return 0 or error
+ * @return result_t with 0 or with error code
  */
-int encrypt_decrypt(PROGRAM_MODE mode, const string *password, freader *source,
-                    fwriter *output, int num_threads);
+result_t encrypt_decrypt(PROGRAM_MODE mode, const string *password,
+                         freader *source, fwriter *output, int num_threads);
 
 #define encrypt(password, source, output, num_threads)                         \
   encrypt_decrypt(ENCRYPT, password, source, output, num_threads)

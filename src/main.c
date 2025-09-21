@@ -7,11 +7,14 @@
 #include "global.h"
 #include "thread_process.h"
 
-#define CHECK_ERROR(error)                                                     \
-  if (error != OK) {                                                           \
-    fprintf(stderr, "%s\n", easy_error_message(error));                        \
+#define CHECK_ERROR(result)                                                    \
+  if (result.code != OK) {                                                     \
+    result.error_msg = string_from_cstr(easy_error_message(result.code));      \
     goto cleanup;                                                              \
   }
+
+#define PRINT_ERROR(result)                                                    \
+  fprintf(stderr, "Fatal! %s\n", string_cstr((result).error_msg))
 
 inline static void usage(void) {
   puts(
@@ -99,7 +102,7 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  easy_error error = OK;
+  result_t result = {0, NULL};
   string *password = NULL;
   freader *input_file = NULL, *password_file = NULL;
   fwriter *output_file = NULL;
@@ -119,28 +122,30 @@ int main(int argc, char *argv[]) {
   // Creating parser
   cmd_parser *parser = cmd_parser_create();
   if (!parser) {
-    fprintf(stderr, "Error of creating parser!\n");
-    error = ALLOCATION_FAILED;
+    SET_RESULT(result, ALLOCATION_FAILED, "Error of creating parser");
     goto cleanup;
   }
 
   // Adding arguments
-  error = add_arguments(parser);
-  CHECK_ERROR(error);
+  result.code = add_arguments(parser);
+  CHECK_ERROR(result);
 
   // Parse command line
-  error = cmd_parser_parse(parser, argc, argv);
-  if (error != OK) {
-    fprintf(stderr, "Fatal! %s", easy_error_message(error));
-    if (parser->arg_error)
-      fprintf(stderr, ": %s\n", string_cstr(parser->arg_error));
+  result.code = cmd_parser_parse(parser, argc, argv);
+  if (result.code != OK) {
+    result.error_msg = string_from_cstr(easy_error_message(result.code));
+    if (parser->arg_error) {
+      string_append(result.error_msg, ": ");
+      string_append(result.error_msg, string_cstr(parser->arg_error));
+    }
 
     goto cleanup;
   }
 
-  error = check_arguments(parser, &password_flag, &output_flag, &help_flag,
-                          &encrypt_flag, &decrypt_flag, &threads_flag);
-  CHECK_ERROR(error);
+  result.code =
+      check_arguments(parser, &password_flag, &output_flag, &help_flag,
+                      &encrypt_flag, &decrypt_flag, &threads_flag);
+  CHECK_ERROR(result);
 
   if (help_flag) {
     usage();
@@ -148,64 +153,63 @@ int main(int argc, char *argv[]) {
   }
 
   if (encrypt_flag && decrypt_flag) {
-    fprintf(stderr, "Fatal! provide both encrypt and decrypt flag mode!\n");
-    error = EXIT_INVALID_MODE;
+    SET_RESULT(result, EXIT_INVALID_MODE,
+               "Provide both encrypt and decrypt flag mode");
     goto cleanup;
 
   } else if (!encrypt_flag && !decrypt_flag) {
-    fprintf(stderr, "Fatal! No flag mode provide!\n");
-    error = EXIT_INVALID_MODE;
+    SET_RESULT(result, EXIT_INVALID_MODE, "No flag mode provide");
     goto cleanup;
   }
 
   mode = (encrypt_flag) ? ENCRYPT : DECRYPT;
 
   // Getting input file
-  const grow *positional_args = cmd_get_pos_args(parser, &error);
-  CHECK_ERROR(error);
+  const grow *positional_args = cmd_get_pos_args(parser, &result.code);
+  CHECK_ERROR(result);
 
   // No input file provided
   if (grow_size(positional_args) == 0) {
-    fprintf(stderr, "Fatal! No file to encrypt/decrypt provided!\n");
-
-    error = EXIT_NO_INPUT_FILE_PROVIDED;
+    SET_RESULT(result, EXIT_NO_INPUT_FILE_PROVIDED,
+               "No file to encrypt/decrypt provided")
     goto cleanup;
 
     // Provided more that 1 input file
   } else if (grow_size(positional_args) > 1) {
-    fprintf(stderr, "Fatal! Too many input files: ");
-    for (size_t i = 0; i < grow_size(positional_args) && error == OK; i++) {
-      const string *arg = grow_get(positional_args, i, &error);
-      fprintf(stderr, " %s, ", string_cstr(arg));
+    result.error_msg = string_from_cstr("Too many input files: \n");
+    result.code = EXIT_MORE_THAN_ONE_INPUT_FILE;
+    for (size_t i = 0; i < grow_size(positional_args); i++) {
+      const string *arg = grow_get(positional_args, i, NULL);
+      string_append(result.error_msg, string_cstr(arg));
+      string_append(result.error_msg, " ");
     }
 
-    error = EXIT_MORE_THAN_ONE_INPUT_FILE;
     goto cleanup;
   }
 
-  path_to_input_file = grow_get(positional_args, 0, &error);
-  CHECK_ERROR(error);
+  path_to_input_file = grow_get(positional_args, 0, &result.code);
+  CHECK_ERROR(result);
 
   // Getting password
   if (password_flag) {
-    path_to_password_file = cmd_get_value(parser, "-p", &error);
-    CHECK_ERROR(error);
+    path_to_password_file = cmd_get_value(parser, "-p", &result.code);
+    CHECK_ERROR(result);
 
   } else {
-    fprintf(stderr, "Fatal! No password file provided!\n");
-    error = EXIT_NO_PASSWORD_FILE_PROVIDED;
+    SET_RESULT(result, EXIT_NO_PASSWORD_FILE_PROVIDED,
+               "No password file provided");
     goto cleanup;
   }
 
   // Getting output file
   if (output_flag) {
-    path_to_output_file_given = cmd_get_value(parser, "-o", &error);
-    CHECK_ERROR(error);
+    path_to_output_file_given = cmd_get_value(parser, "-o", &result.code);
+    CHECK_ERROR(result);
 
   } else {
     path_to_output_file = string_from_cstr(string_cstr(path_to_input_file));
-    error = string_append(path_to_output_file, ".x"); // add .x extension
-    CHECK_ERROR(error);
+    result.code = string_append(path_to_output_file, ".x"); // add .x extension
+    CHECK_ERROR(result);
   }
 
   if (threads_flag) {
@@ -214,31 +218,36 @@ int main(int argc, char *argv[]) {
            "value:%d\n",
            NUM_THREAD);
 #else
-    const string *thrds = cmd_get_value(parser, "-t", &error);
-    CHECK_ERROR(error);
+    const string *thrds = cmd_get_value(parser, "-t", &result.code);
+    CHECK_ERROR(result);
     num_threads = atoi(string_cstr(thrds));
 #endif
   }
 
   // Opening files
-  input_file = openr(string_cstr(path_to_input_file), READ_BIN, &error);
-  CHECK_ERROR(error);
+  input_file = openr(string_cstr(path_to_input_file), READ_BIN, &result.code);
+  CHECK_ERROR(result);
 
   output_file =
       openw(string_cstr((path_to_output_file) ? path_to_output_file
                                               : path_to_output_file_given),
-            WRITE_BIN, &error);
-  CHECK_ERROR(error);
+            WRITE_BIN, &result.code);
+  CHECK_ERROR(result);
 
-  password_file = openr(string_cstr(path_to_password_file), READ_BIN, &error);
-  CHECK_ERROR(error);
+  password_file =
+      openr(string_cstr(path_to_password_file), READ_BIN, &result.code);
+  CHECK_ERROR(result);
 
-  password = read_file(password_file, &error);
-  CHECK_ERROR(error);
+  password = read_file(password_file, &result.code);
+  CHECK_ERROR(result);
 
-  error = encrypt_decrypt(mode, password, input_file, output_file, num_threads);
+  result =
+      encrypt_decrypt(mode, password, input_file, output_file, num_threads);
 
 cleanup: // Goto place to cleanup all allocated stuff
+  if (result.code != OK)
+    PRINT_ERROR(result);
+
   if (parser)
     cmd_parser_free(parser);
   if (output_file)
@@ -251,6 +260,8 @@ cleanup: // Goto place to cleanup all allocated stuff
     string_free_(password);
   if (path_to_output_file)
     string_free_(path_to_output_file);
+  if (result.error_msg)
+    string_free_(result.error_msg);
 
-  return error;
+  return result.code;
 }
