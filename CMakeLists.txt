@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.14)
 project(denc LANGUAGES C)
 
-# Set output directory for executable to project root, like in Makefile
+# Set output directory for executable to project root
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_PROJECT_SOURCE_DIR})
 
 # Include directory for denc project's headers
@@ -12,7 +12,6 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug CACHE STRING "Choose Release or Debug" FORCE)
 endif()
 
-# Compiler flags based on Makefile and CMakeLists_easystd.txt
 if(MSVC)
     # MSVC (cl)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /W4 /MP /permissive-")
@@ -59,7 +58,6 @@ add_executable(denc ${DENC_SRC})
 # Link libraries
 target_link_libraries(denc PRIVATE ${EASYSTD_LIBRARY})
 
-# Platform-specific link libraries (from CMakeLists_easystd.txt)
 if(NOT MSVC)
     target_link_libraries(denc PRIVATE m)
 endif()
