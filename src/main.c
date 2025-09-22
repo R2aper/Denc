@@ -1,5 +1,7 @@
 #include <estd/argparser.h>
+#include <estd/eerror.h>
 #include <estd/efile.h>
+#include <estd/estring.h>
 #include <stdlib.h>
 
 #include "encrypt.h"
@@ -196,10 +198,21 @@ int main(int argc, char *argv[]) {
     path_to_password_file = cmd_get_value(parser, "-p", &result.code);
     CHECK_ERROR(result);
 
-  } else {
-    SET_RESULT(result, EXIT_NO_PASSWORD_FILE_PROVIDED,
-               "No password file provided");
-    goto cleanup;
+    password_file =
+        openr(string_cstr(path_to_password_file), READ_BIN, &result.code);
+    CHECK_ERROR(result);
+
+    password = read_file(password_file, &result.code);
+    CHECK_ERROR(result);
+
+  } else { // If user didn't provide password file, ask password from user
+    puts("Enter password:");
+    password = string_from_input();
+    if (!password) {
+      SET_RESULT(result, ALLOCATION_FAILED,
+                 easy_error_message(ALLOCATION_FAILED));
+      goto cleanup;
+    }
   }
 
   // Getting input file
@@ -234,14 +247,6 @@ int main(int argc, char *argv[]) {
     result.code = generate_output_files(output_files, input_files);
     CHECK_ERROR(result);
   }
-
-  // Open password file
-  password_file =
-      openr(string_cstr(path_to_password_file), READ_BIN, &result.code);
-  CHECK_ERROR(result);
-
-  password = read_file(password_file, &result.code);
-  CHECK_ERROR(result);
 
   for (size_t i = 0; i < grow_size(input_files) && result.code == OK; i++) {
     const string *path_to_output_file = NULL, *path_to_input_file = NULL;
